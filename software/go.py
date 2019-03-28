@@ -11,7 +11,7 @@ import sys
 import ui_main
 import numpy as np
 import pyqtgraph
-import swhear
+import suhuadc
 import time
 import pyqtgraph.exporters
 import webbrowser
@@ -24,19 +24,18 @@ class ExampleApp(QtGui.QMainWindow, ui_main.Ui_MainWindow):
         self.grECG.plotItem.showGrid(True, True, 0.7)
         self.btnSave.clicked.connect(self.saveFig)
         self.btnSite.clicked.connect(self.website)
-        stamp="DIY ECG by Scott Harden"
+        stamp=""
         self.stamp = pyqtgraph.TextItem(stamp,anchor=(-.01,1),color=(150,150,150),
                                         fill=pyqtgraph.mkBrush('w'))
-        self.ear = swhear.Ear(chunk=int(100)) # determines refresh rate
-        # optionally you can manually set the audio input device to use like this:
-        # self.ear = swhear.Ear(chunk=int(100), device=5) # use audio input device 5
-        if len(self.ear.valid_input_devices()):
-            self.ear.stream_start()
-            self.lblDevice.setText(self.ear.msg)
-            self.update()
+        # chunk is the size at when to draw new and data to read at once
+        # rate is the data rate to get from the ADC in Hz
+        self.adc = suhuadc.Adc(rate=1024, chunk=128)
+        self.adc.stream_start()
+        self.lblDevice.setText(self.adc.msg)
+        self.update()
 
     def closeEvent(self, event):
-        self.ear.close()
+        self.adc.close()
         event.accept()
 
     def saveFig(self):
@@ -48,25 +47,25 @@ class ExampleApp(QtGui.QMainWindow, ui_main.Ui_MainWindow):
 
     def update(self):
         t1,timeTook=time.time(),0
-        if len(self.ear.data) and not self.btnPause.isChecked():
+        if len(self.adc.data) and not self.btnPause.isChecked():
             freqHighCutoff=0
             if self.spinLowpass.value()>0:
                 freqHighCutoff=self.spinLowpass.value()
-            data=self.ear.getFiltered(freqHighCutoff)
+            data=self.adc.getFiltered(freqHighCutoff)
             if self.chkInvert.isChecked():
                 data=np.negative(data)
             if self.chkAutoscale.isChecked():
                 self.Yscale=np.max(np.abs(data))*1.1
-            self.grECG.plotItem.setRange(xRange=[0,self.ear.maxMemorySec],
+            self.grECG.plotItem.setRange(xRange=[0,self.adc.maxMemorySec],
                             yRange=[-self.Yscale,self.Yscale],padding=0)
-            self.grECG.plot(np.arange(len(data))/float(self.ear.rate),data,clear=True,
+            self.grECG.plot(np.arange(len(data))/float(self.adc.rate),data,clear=True,
                             pen=pyqtgraph.mkPen(color='r'),antialias=True)
             self.grECG.plotItem.setTitle(self.lineTitle.text(),color=(0,0,0))
             self.stamp.setPos(0,-self.Yscale)
             self.grECG.plotItem.addItem(self.stamp)
             timeTook=(time.time()-t1)*1000
-            print("plotting took %.02f ms"%(timeTook))
-        msTillUpdate=int(self.ear.chunk/self.ear.rate*1000)-timeTook
+#            print("plotting took %.02f ms"%(timeTook))
+        msTillUpdate=int(self.adc.chunk/self.adc.rate*1000)-timeTook
         QtCore.QTimer.singleShot(max(0,msTillUpdate), self.update)
 
     def website(self):
